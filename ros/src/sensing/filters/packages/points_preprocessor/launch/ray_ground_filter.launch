@@ -2,8 +2,9 @@
 <launch>
 
         <arg name="input_point_topic" default="/points_raw" /> <!-- input_point_topic, ground filtering will be performed over the pointcloud in this topic. -->
-        <arg name="sensor_height" default="1.8" /><!--  Height of the sensor from the ground -->
-        <arg name="clipping_height" default="0.2" /><!-- Remove Points above this height value (default 0.2 meters) -->
+        <arg name="target_frame" default="base_link" /> <!-- target_frame -->
+        <arg name="sensor_height" default="0.0" /><!--  Height of the sensor from the ground -->
+        <arg name="clipping_height" default="2.0" /><!-- Remove Points above this height value (default 0.2 meters) -->
         <arg name="min_point_distance" default="1.85" /><!-- Removes Points closer than this distance from the sensor origin (default 1.85 meters) -->
         <arg name="radial_divider_angle" default="0.08" /><!-- Angle of each Radial division on the XY Plane (default 0.08 degrees)-->
         <arg name="concentric_divider_distance" default="0.01" /><!-- Distance of each concentric division on the XY Plane (default 0.01 meters) -->
@@ -15,8 +16,9 @@
         <arg name="ground_point_topic" default="/points_ground" />
 
         <!-- rosrun points_preprocessor ray_ground_filter -->
-        <node pkg="points_preprocessor" type="ray_ground_filter" name="ray_ground_filter" output="screen">
+        <node pkg="points_preprocessor" type="ray_ground_filter" name="ray_ground_filter" output="log">
                 <param name="input_point_topic" value="$(arg input_point_topic)" />
+                <param name="target_frame" value="$(arg target_frame)" />
                 <param name="sensor_height" value="$(arg sensor_height)" />
                 <param name="clipping_height" value="$(arg clipping_height)" />
                 <param name="min_point_distance" value="$(arg min_point_distance)" />

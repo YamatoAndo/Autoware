@@ -33,6 +33,10 @@
 #include <velodyne_pointcloud/point_types.h>
 #include "autoware_config_msgs/ConfigRayGroundFilter.h"
 
+#include <tf2/transform_datatypes.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_sensor_msgs/tf2_sensor_msgs.h>
+
 //headers in Autoware Health Checker
 #include <autoware_health_checker/node_status_publisher.h>
 
@@ -53,7 +57,11 @@ private:
 	ros::Publisher      groundless_points_pub_;
 	ros::Publisher      ground_points_pub_;
 
+	tf2_ros::Buffer tf_buffer_;
+    tf2_ros::TransformListener tf_listener_;
+
 	std::string         input_point_topic_;
+	std::string			target_frame_;
 
 	double              sensor_height_;//meters
 	double              general_max_slope_;//degrees
@@ -94,7 +102,7 @@ private:
 	void publish_cloud(const ros::Publisher& in_publisher,
 	                         const pcl::PointCloud<pcl::PointXYZI>::Ptr in_cloud_to_publish_ptr,
 	                         const std_msgs::Header& in_header);
-	
+
 	/*!
 	 *
 	 * @param[in] in_cloud Input Point Cloud to be organized in radial segments
@@ -117,7 +125,7 @@ private:
 	void ClassifyPointCloud(std::vector<PointCloudXYZIRTColor>& in_radial_ordered_clouds,
 	                        pcl::PointIndices& out_ground_indices,
 	                        pcl::PointIndices& out_no_ground_indices);
-	
+
 
 	/*!
 	 * Removes the points higher than a threshold
@@ -128,7 +136,7 @@ private:
 	void ClipCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr in_cloud_ptr,
 	               double in_clip_height,
 	               pcl::PointCloud<pcl::PointXYZI>::Ptr out_clipped_cloud_ptr);
-	
+
 
 	/*!
 	 * Returns the resulting complementary PointCloud, one with the points kept and the other removed as indicated
@@ -142,7 +150,7 @@ private:
 	                          const pcl::PointIndices& in_indices,
 	                          pcl::PointCloud<pcl::PointXYZI>::Ptr out_only_indices_cloud_ptr,
 	                          pcl::PointCloud<pcl::PointXYZI>::Ptr out_removed_indices_cloud_ptr);
-	
+
 	/*!
 	 * Removes points up to a certain distance in the XY Plane
 	 * @param in_cloud_ptr Input PointCloud
@@ -152,9 +160,12 @@ private:
 	void RemovePointsUpTo(const pcl::PointCloud<pcl::PointXYZI>::Ptr in_cloud_ptr,
 	                      double in_min_distance,
 	                      pcl::PointCloud<pcl::PointXYZI>::Ptr out_filtered_cloud_ptr);
-	
+
+    bool TransformPointCloud(const std::string target_frame,
+                          const sensor_msgs::PointCloud2::ConstPtr &in_sensor_cloud,
+                          const sensor_msgs::PointCloud2::Ptr &out_sensor_cloud);
 	void CloudCallback(const sensor_msgs::PointCloud2ConstPtr &in_sensor_cloud);
-	
+
 friend class RayGroundFilter_clipCloud_Test;
 public:
 	RayGroundFilter();

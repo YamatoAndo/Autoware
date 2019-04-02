@@ -29,6 +29,7 @@
 #include <velodyne_pointcloud/point_types.h>
 #include "autoware_config_msgs/ConfigRayGroundFilter.h"
 
+
 #include <opencv2/core/version.hpp>
 #if (CV_MAJOR_VERSION == 3)
 #include "gencolors.cpp"
@@ -55,10 +56,16 @@ void RayGroundFilter::publish_cloud(const ros::Publisher& in_publisher,
     const pcl::PointCloud<pcl::PointXYZI>::Ptr in_cloud_to_publish_ptr,
     const std_msgs::Header& in_header)
 {
-  sensor_msgs::PointCloud2 cloud_msg;
-  pcl::toROSMsg(*in_cloud_to_publish_ptr, cloud_msg);
-  cloud_msg.header = in_header;
-  in_publisher.publish(cloud_msg);
+  sensor_msgs::PointCloud2::Ptr cloud_msg_ptr(new sensor_msgs::PointCloud2);
+  sensor_msgs::PointCloud2::Ptr trans_cloud_msg_ptr(new sensor_msgs::PointCloud2);
+  pcl::toROSMsg(*in_cloud_to_publish_ptr, *cloud_msg_ptr);
+  cloud_msg_ptr->header.frame_id = target_frame_;
+  cloud_msg_ptr->header.stamp = in_header.stamp;
+  bool suscceeded = TransformPointCloud(in_header.frame_id, cloud_msg_ptr, trans_cloud_msg_ptr);
+  if(!suscceeded) {
+      return;
+  }
+  in_publisher.publish(*trans_cloud_msg_ptr);
 }
 
 /*!
@@ -117,6 +124,7 @@ void RayGroundFilter::ConvertXYZIToRTZColor(const pcl::PointCloud<pcl::PointXYZI
     std::sort(out_radial_ordered_clouds[i].begin(), out_radial_ordered_clouds[i].end(),
         [](const PointXYZIRTColor& a, const PointXYZIRTColor& b){ return a.radius < b.radius; });
   }
+
 }
 
 /*!
@@ -146,7 +154,7 @@ void RayGroundFilter::ClassifyPointCloud(std::vector<PointCloudXYZIRTColor>& in_
       float general_height_threshold = tan(DEG2RAD(general_max_slope_)) * in_radial_ordered_clouds[i][j].radius;
 
       //for points which are very close causing the height threshold to be tiny, set a minimum value
-      if (points_distance > concentric_divider_distance_ && height_threshold < min_height_threshold_)
+      if (height_threshold < min_height_threshold_)
       { height_threshold = min_height_threshold_; }
 
       //check current point height against the LOCAL threshold (previous point)
@@ -281,12 +289,40 @@ void RayGroundFilter::RemovePointsUpTo(const pcl::PointCloud<pcl::PointXYZI>::Pt
   extractor.filter(*out_filtered_cloud_ptr);
 }
 
+bool RayGroundFilter::TransformPointCloud(const std::string target_frame,
+    const sensor_msgs::PointCloud2::ConstPtr &in_sensor_cloud,
+    const sensor_msgs::PointCloud2::Ptr &out_sensor_cloud)
+{
+    if(target_frame == in_sensor_cloud->header.frame_id) {
+        *out_sensor_cloud = *in_sensor_cloud;
+        return true;
+    }
+
+    geometry_msgs::TransformStamped transform_stamped;
+    try {
+      transform_stamped = tf_buffer_.lookupTransform(target_frame, in_sensor_cloud->header.frame_id, in_sensor_cloud->header.stamp, ros::Duration(1.0));
+    }
+    catch (tf2::TransformException &ex) {
+      ROS_WARN("%s", ex.what());
+      return false;
+    }
+    tf2::doTransform(*in_sensor_cloud, *out_sensor_cloud, transform_stamped);
+    return true;
+}
+
 void RayGroundFilter::CloudCallback(const sensor_msgs::PointCloud2ConstPtr &in_sensor_cloud)
 {
   node_status_pub_ptr_->NODE_ACTIVATE();
   node_status_pub_ptr_->CHECK_RATE("/topic/rate/points_raw/slow",8,5,1,"topic points_raw subscribe rate low.");
+
+  sensor_msgs::PointCloud2::Ptr trans_sensor_cloud(new sensor_msgs::PointCloud2);
+  bool suscceeded = TransformPointCloud(target_frame_, in_sensor_cloud, trans_sensor_cloud);
+  if(!suscceeded) {
+      return;
+  }
+
   pcl::PointCloud<pcl::PointXYZI>::Ptr current_sensor_cloud_ptr(new pcl::PointCloud<pcl::PointXYZI>);
-  pcl::fromROSMsg(*in_sensor_cloud, *current_sensor_cloud_ptr);
+  pcl::fromROSMsg(*trans_sensor_cloud, *current_sensor_cloud_ptr);
 
   pcl::PointCloud<pcl::PointXYZI>::Ptr clipped_cloud_ptr(new pcl::PointCloud<pcl::PointXYZI>);
 
@@ -327,7 +363,9 @@ void RayGroundFilter::CloudCallback(const sensor_msgs::PointCloud2ConstPtr &in_s
 
 }
 
-RayGroundFilter::RayGroundFilter():node_handle_("~")
+RayGroundFilter::RayGroundFilter()
+    : node_handle_("~")
+    , tf_listener_(tf_buffer_)
 {
   ros::NodeHandle nh;
   ros::NodeHandle pnh("~");
@@ -347,7 +385,10 @@ void RayGroundFilter::Run()
   node_handle_.param<std::string>("input_point_topic", input_point_topic_, "/points_raw");
   ROS_INFO("Input point_topic: %s", input_point_topic_.c_str());
 
-  node_handle_.param("sensor_height", sensor_height_, 1.7);
+  node_handle_.param<std::string>("target_frame", target_frame_, "base_link");
+  ROS_INFO("target_frame: %s", target_frame_);
+
+  node_handle_.param("sensor_height", sensor_height_, 0.0);
   ROS_INFO("sensor_height[meters]: %f", sensor_height_);
 
   node_handle_.param("general_max_slope", general_max_slope_, 3.0);
@@ -362,7 +403,7 @@ void RayGroundFilter::Run()
   ROS_INFO("concentric_divider_distance[meters]: %f", concentric_divider_distance_);
   node_handle_.param("min_height_threshold", min_height_threshold_, 0.05);//0.05 meters default
   ROS_INFO("min_height_threshold[meters]: %f", min_height_threshold_);
-  node_handle_.param("clipping_height", clipping_height_, 0.2);//0.2 meters default above the car
+  node_handle_.param("clipping_height", clipping_height_, 2.0);//above the car
   ROS_INFO("clipping_height[meters]: %f", clipping_height_);
   node_handle_.param("min_point_distance", min_point_distance_, 1.85);//1.85 meters default
   ROS_INFO("min_point_distance[meters]: %f", min_point_distance_);
@@ -398,4 +439,3 @@ void RayGroundFilter::Run()
   ros::spin();
 
 }
-

@@ -21,6 +21,9 @@
 
 PoseStamped interpolatePose(const PoseStamped &pose_a,
                             const PoseStamped &pose_b, const double time_stamp);
+PoseStamped interpolatePose(const PoseStamped &pose_a,
+                            const Velocity &v,
+                            const double time_stamp);
 
 class PoseLinearInterpolator {
 public:

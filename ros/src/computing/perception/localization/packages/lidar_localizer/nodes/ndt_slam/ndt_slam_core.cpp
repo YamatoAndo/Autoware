@@ -32,7 +32,7 @@
 NdtSlam::NdtSlam(ros::NodeHandle nh, ros::NodeHandle private_nh)
     : nh_(nh), private_nh_(private_nh), tf2_listener_(tf2_buffer_),
       with_mapping_(false), separate_mapping_(false),
-      use_nn_point_z_when_initial_pose_(false), publish_tf_(true), sensor_frame_("velodyne"),
+      use_nn_point_z_when_initial_pose_(false), publish_tf_(true), use_vehicle_twist_(false), sensor_frame_("velodyne"),
       target_frame_("base_link"), map_frame_("map"), world_frame_("map"),
       min_scan_range_(5.0), max_scan_range_(200.0), min_add_scan_shift_(1.0),
       matching_score_use_points_num_(300), matching_score_cutoff_lower_limit_z_(0.2),
@@ -121,9 +121,13 @@ NdtSlam::NdtSlam(ros::NodeHandle nh, ros::NodeHandle private_nh)
   private_nh_.getParam("publish_tf", publish_tf_);
   ROS_INFO("publish_tf: %d", publish_tf_);
 
+  private_nh_.getParam("use_vehicle_twist", use_vehicle_twist_);
+  ROS_INFO("use_vehicle_twist: %d", use_vehicle_twist_);
+
   std::string mapping_file_directory_path = "/tmp/Autoware/log/ndt_slam";
   private_nh_.getParam("mapping_file_directory_path", mapping_file_directory_path);
   ROS_INFO("mapping_file_directory_path: %s", mapping_file_directory_path.c_str());
+
 
   const std::time_t now = std::time(NULL);
   const std::tm *pnow = std::localtime(&now);
@@ -148,6 +152,7 @@ NdtSlam::NdtSlam(ros::NodeHandle nh, ros::NodeHandle private_nh)
   config_sub_ = nh_.subscribe("/config/ndt_slam", 1, &NdtSlam::configCallback, this);
   points_map_sub_ = nh_.subscribe("/points_map", 1, &NdtSlam::pointsMapUpdatedCallback, this);
   initial_pose_sub_ = nh_.subscribe("/initialpose", 1, &NdtSlam::initialPoseCallback, this);
+  vehicle_twist_sub_ = nh_.subscribe("/vehicle/twist", 1, &NdtSlam::vehicleTwistCallback, this);
 
   mapping_points_sub_.reset(new message_filters::Subscriber<sensor_msgs::PointCloud2>(nh_, "/points_raw", points_queue_size));
   localizing_points_sub_.reset(new message_filters::Subscriber<sensor_msgs::PointCloud2>(nh_, "/filtered_points", points_queue_size));
@@ -254,6 +259,10 @@ void NdtSlam::initialPoseCallback(const geometry_msgs::PoseWithCovarianceStamped
 
   init_pose_stamped_ = PoseStamped(mapTF_init_pose, current_time_sec);
   pose_interpolator_.clearPoseStamped();
+}
+
+void NdtSlam::vehicleTwistCallback(const geometry_msgs::TwistStamped::ConstPtr &twist_msg_ptr) {
+  vehicle_twist_queue_.push_back(*twist_msg_ptr);
 }
 
 void NdtSlam::mappingAndLocalizingPointsCallback(
@@ -394,14 +403,33 @@ void NdtSlam::updateTransforms() {
 }
 
 Pose NdtSlam::getPredictPose() {
-    Pose predict_pose;
+    PoseStamped predict_pose;
     if (pose_interpolator_.isNotSetPoseStamped()) {
-      predict_pose = init_pose_stamped_.pose;
+      predict_pose = init_pose_stamped_;
+    }
+    else if (use_vehicle_twist_ && !vehicle_twist_queue_.empty()) {
+      predict_pose = pose_interpolator_.getCurrentPoseStamped();
+      while(!vehicle_twist_queue_.empty() && predict_pose.stamp < current_scan_time_.toSec()) {
+        const auto twist_msg = vehicle_twist_queue_.front();
+        vehicle_twist_queue_.pop_front();
+
+        double time_stamp = 0;
+        if(twist_msg.header.stamp.toSec() < predict_pose.stamp) {
+          continue;
+        }
+        else if(vehicle_twist_queue_.empty() || twist_msg.header.stamp.toSec() > current_scan_time_.toSec()) {
+          time_stamp = current_scan_time_.toSec();
+        }
+        else {
+          time_stamp = twist_msg.header.stamp.toSec();
+        }
+        predict_pose = interpolatePose(predict_pose, convertFromROSMsg(twist_msg), time_stamp);
+      }
     }
     else {
-      predict_pose = pose_interpolator_.getInterpolatePoseStamped(current_scan_time_.toSec()).pose;
+      predict_pose = pose_interpolator_.getInterpolatePoseStamped(current_scan_time_.toSec());
     }
-    return predict_pose;
+    return predict_pose.pose;
 }
 
 void NdtSlam::mapping(const boost::shared_ptr<pcl::PointCloud<PointTarget>> &mapping_points_ptr, const Pose &sensor_pose) {

@@ -51,6 +51,7 @@
 
   <arg name="use_nn_point_z_when_initial_pose" default="false" doc="If True, the height value at the 2D Pose Estimate of RViz is complemented by the value of z at the nearest point of the map" />
   <arg name="publish_tf" default="true" doc="If true, publish TF of map_frame to target_frame." />
+  <arg name="use_vehicle_twist" default="true" doc="" />
 
   <arg name="use_anonymous_node_name" default="false" doc="If True, launch with anonymous option" />
   <arg name="node_name" value="ndt_slam" unless="$(arg use_anonymous_node_name)" doc="Not use anonymous option" />
@@ -100,6 +101,7 @@
 
     <param name="use_nn_point_z_when_initial_pose" value="$(arg use_nn_point_z_when_initial_pose)" />
     <param name="publish_tf" value="$(arg publish_tf)" />
+    <param name="use_vehicle_twist" value="$(arg use_vehicle_twist)" />
   </node>
 
 </launch>

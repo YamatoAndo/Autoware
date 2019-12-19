@@ -37,6 +37,28 @@ PoseStamped interpolatePose(const PoseStamped &pose_a,
   return p;
 }
 
+PoseStamped interpolatePose(const PoseStamped &pose_a,
+                            const Velocity &v,
+                            const double time_stamp) {
+  if (pose_a.stamp == 0 || time_stamp == 0) {
+    return PoseStamped();
+  }
+
+  const double dt = time_stamp - pose_a.stamp;
+
+  PoseStamped p;
+  p.pose.roll = pose_a.pose.roll;
+  p.pose.pitch = pose_a.pose.pitch;
+  p.pose.yaw = pose_a.pose.yaw + v.angular.z * dt;
+
+  const double dis = v.linear.x * dt;
+  p.pose.x = pose_a.pose.x + dis * std::cos(p.pose.yaw);
+  p.pose.y = pose_a.pose.y + dis * std::sin(p.pose.yaw);
+  p.pose.z = pose_a.pose.z;
+  p.stamp = time_stamp;
+  return p;
+}
+
 PoseLinearInterpolator::PoseLinearInterpolator() {}
 
 void PoseLinearInterpolator::clearPoseStamped() {

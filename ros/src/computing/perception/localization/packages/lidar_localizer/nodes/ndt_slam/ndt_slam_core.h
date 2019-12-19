@@ -68,6 +68,8 @@ private:
   void configCallback(const autoware_config_msgs::ConfigNDTSlam::ConstPtr &config_msg_ptr);
   void pointsMapUpdatedCallback(const sensor_msgs::PointCloud2::ConstPtr &pointcloud2_msg_ptr);
   void initialPoseCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr &pose_conv_msg_ptr);
+  void vehicleTwistCallback(const geometry_msgs::TwistStamped::ConstPtr &twist_msg_ptr);
+
   void mappingAndLocalizingPointsCallback(
       const sensor_msgs::PointCloud2::ConstPtr &mapping_points_msg_ptr,
       const sensor_msgs::PointCloud2::ConstPtr &localizing_points_msg_ptr);
@@ -120,6 +122,7 @@ private:
   ros::Subscriber config_sub_;
   ros::Subscriber points_map_sub_;
   ros::Subscriber initial_pose_sub_;
+  ros::Subscriber vehicle_twist_sub_;
 
   std::unique_ptr<message_filters::Subscriber<sensor_msgs::PointCloud2>> mapping_points_sub_;
   std::unique_ptr<message_filters::Subscriber<sensor_msgs::PointCloud2>> localizing_points_sub_;
@@ -144,6 +147,7 @@ private:
   bool separate_mapping_;
   bool use_nn_point_z_when_initial_pose_;
   bool publish_tf_;
+  bool use_vehicle_twist_;
   std::string sensor_frame_;
   std::string target_frame_;
   std::string map_frame_;
@@ -159,6 +163,7 @@ private:
   double matching_score_cutoff_upper_limit_range_;
 
   PoseStamped init_pose_stamped_;
+  std::deque<geometry_msgs::TwistStamped> vehicle_twist_queue_;
   ros::Time current_scan_time_;
   double matching_score_;
 };
